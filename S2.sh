@@ -42,11 +42,11 @@ external: $NET_IF
 
 socksmethod: username
 user.privileged: root
-user.unprivileged: nobody
+user.unprivileged: root
 
 # 訪問控制規則
 client pass {
-    from: 0.0.0.0/0 to: 0.0.0.0/0
+    from: 0.0.0.0/0 port 1-65535 to: 0.0.0.0/0
     log: connect error
 }
 client pass {
