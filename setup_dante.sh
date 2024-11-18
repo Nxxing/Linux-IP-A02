@@ -39,7 +39,7 @@ external: $IPV4_ADDR
 # 認證方式
 socksmethod: username
 user.privileged: root
-user.unprivileged: nobody
+user.unprivileged: root
 
 # 訪問控制規則
 client pass {
