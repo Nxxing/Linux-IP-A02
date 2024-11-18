@@ -5,11 +5,10 @@ PORT=3128                          # 代理端口
 NET_IF="ens5"                      # 網卡名稱 (根據實際情況修改)
 LOGFILE="/opt/dante/log/dante.log" # 日誌文件
 CONFIG_FILE="/opt/dante/etc/danted.conf" # 配置文件
-PASS_FILE="/opt/dante/etc/sockd.passwd"  # 帳密文件
 SERVICE_FILE="/etc/systemd/system/dante.service"
-UNPRIVILEGED_USER="root"         # 非特權用戶
+UNPRIVILEGED_USER="nobody"         # 非特權用戶
 
-# 預設帳密
+# 預設系統用戶和密碼
 DEFAULT_USER="proxyuser"
 DEFAULT_PASS="X3KVTD6tsFkTtuf5"
 
@@ -23,6 +22,13 @@ fi
 if ! id -u "$UNPRIVILEGED_USER" >/dev/null 2>&1; then
     echo "創建非特權用戶 $UNPRIVILEGED_USER..."
     useradd -r -s /sbin/nologin "$UNPRIVILEGED_USER"
+fi
+
+# 創建代理用戶
+if ! id -u "$DEFAULT_USER" >/dev/null 2>&1; then
+    echo "創建代理用戶 $DEFAULT_USER..."
+    useradd -s /sbin/nologin "$DEFAULT_USER"
+    echo "$DEFAULT_USER:$DEFAULT_PASS" | chpasswd
 fi
 
 # 停止 Dante 服務
@@ -46,13 +52,6 @@ fi
 mkdir -p /opt/dante/etc
 mkdir -p /opt/dante/log
 
-# 配置帳密文件
-echo "生成帳密文件..."
-cat > "$PASS_FILE" <<EOL
-$DEFAULT_USER: $DEFAULT_PASS
-EOL
-chmod 600 "$PASS_FILE"
-
 # 配置 danted.conf 文件
 echo "生成 danted.conf 配置文件..."
 cat > "$CONFIG_FILE" <<EOL
@@ -68,9 +67,6 @@ socksmethod: username
 user.privileged: root
 user.unprivileged: $UNPRIVILEGED_USER
 
-# 自定義帳密文件
-userfile: $PASS_FILE
-
 # 訪問控制規則
 client pass {
     from: 0.0.0.0/0 port 1-65535 to: 0.0.0.0/0
@@ -85,11 +81,13 @@ socks pass {
     from: 0.0.0.0/0 to: 0.0.0.0/0
     log: connect error
     protocol: tcp udp
+    username: $DEFAULT_USER
 }
 socks pass {
     from: ::/0 to: ::/0
     log: connect error
     protocol: tcp udp
+    username: $DEFAULT_USER
 }
 EOL
 
