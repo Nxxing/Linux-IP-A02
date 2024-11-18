@@ -5,7 +5,7 @@ echo "配置 Dante Server 開始..."
 
 
 # 配置文件路徑
-CONF_PATH="/etc/danted.conf"
+CONF_PATH="/opt/dante/etc/danted.conf"
 
 # 創建 Dante 配置
 echo "正在生成配置文件..."
@@ -19,8 +19,8 @@ external: ::                   # IPv6 外部地址
 method: username
 
 user.privileged: proxy
-user.notprivileged: nobody
-user.libwrap: nobody
+user.notprivileged: root
+user.libwrap: root
 
 # 訪問控制規則
 client pass {
