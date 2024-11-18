@@ -3,30 +3,6 @@
 # 一鍵配置 Dante Server 適用於 Debian
 echo "開始配置 Dante 代理服務器 (Debian)..."
 
-# 檢查是否以 root 身份運行
-if [ "$EUID" -ne 0 ]; then
-  echo "請以 root 身份運行此腳本。"
-  exit 1
-fi
-
-# 更新套件列表
-echo "更新套件列表..."
-apt update -y
-if [ $? -ne 0 ]; then
-  echo "套件列表更新失敗。"
-  exit 1
-fi
-
-# 安裝 Dante 代理服務器
-echo "安裝 Dante 代理服務器..."
-apt install -y dante-server
-if [ $? -ne 0 ]; then
-  echo "Dante 安裝失敗。"
-  exit 1
-fi
-
-echo "Dante 已成功安裝。"
-
 # 創建代理用戶（如果未存在）
 USERNAME="proxyuser"
 PASSWORD="X3KVTD6tsFkTtuf5"
