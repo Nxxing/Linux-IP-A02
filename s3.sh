@@ -6,11 +6,7 @@ if [ "$EUID" -ne 0 ]; then
   exit
 fi
 
-# 檢查 Danted 是否已安裝
-if ! command -v danted &> /dev/null; then
-  echo "Danted 未安裝，請先安裝 Danted"
-  exit
-fi
+
 
 # 配置文件路徑
 CONFIG_FILE="/etc/danted.conf"
