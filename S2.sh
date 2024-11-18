@@ -25,10 +25,6 @@ if [[ -z "$IPV4_ADDR" || -z "$IPV6_ADDR" ]]; then
     exit 1
 fi
 
-# 創建配置目錄和日誌目錄
-mkdir -p /opt/dante/etc
-mkdir -p /opt/dante/log
-
 # 創建用戶認證文件
 echo "創建用戶認證信息..."
 echo "$USER $PASS" > /etc/dante.passwd
@@ -46,7 +42,7 @@ external: $NET_IF
 
 socksmethod: username
 user.privileged: root
-user.unprivileged: root
+user.unprivileged: root  # 測試設置為 root（可視情況修改為 nobody）
 
 # 訪問控制規則
 client pass {
