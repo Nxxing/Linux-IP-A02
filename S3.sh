@@ -1,15 +1,17 @@
 #!/bin/bash
 
 # 配置參數
-PORT=3128               # 代理端口
-NET_IF="ens5"           # 網卡名稱 (根據實際情況修改)
-LOGFILE="/opt/dante/log/dante.log"  # 日誌文件
-CONFIG_FILE="/opt/dante/etc/danted.conf"
+PORT=3128                          # 代理端口
+NET_IF="ens5"                      # 網卡名稱 (根據實際情況修改)
+LOGFILE="/opt/dante/log/dante.log" # 日誌文件
+CONFIG_FILE="/opt/dante/etc/danted.conf" # 配置文件
+PASS_FILE="/opt/dante/etc/sockd.passwd"  # 帳密文件
 SERVICE_FILE="/etc/systemd/system/dante.service"
-AUTH_FILE="/opt/dante/etc/sockd.passwd"
-UNPRIVILEGED_USER="nobody"  # 非特權用戶
-DEFAULT_USER="user"         # 預設用戶名
-DEFAULT_PASS="X3KVTD6tsFkTtuf5"  # 預設密碼
+UNPRIVILEGED_USER="root"         # 非特權用戶
+
+# 預設帳密
+DEFAULT_USER="proxyuser"
+DEFAULT_PASS="X3KVTD6tsFkTtuf5"
 
 # 確保腳本以 root 身份運行
 if [[ $EUID -ne 0 ]]; then
@@ -17,13 +19,13 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# 確認非特權用戶存在
+# 確保非特權用戶存在
 if ! id -u "$UNPRIVILEGED_USER" >/dev/null 2>&1; then
     echo "創建非特權用戶 $UNPRIVILEGED_USER..."
     useradd -r -s /sbin/nologin "$UNPRIVILEGED_USER"
 fi
 
-# 停止 Dante 服務（如服務正在運行）
+# 停止 Dante 服務
 echo "停止 Dante 服務..."
 systemctl stop dante 2>/dev/null || echo "Dante 服務未在運行"
 
@@ -31,9 +33,13 @@ systemctl stop dante 2>/dev/null || echo "Dante 服務未在運行"
 IPV4_ADDR=$(ip -4 addr show "$NET_IF" | grep "inet " | awk '{print $2}' | cut -d/ -f1)
 IPV6_ADDR=$(ip -6 addr show "$NET_IF" | grep "inet6 " | grep "global" | awk '{print $2}' | cut -d/ -f1)
 
-if [[ -z "$IPV4_ADDR" || -z "$IPV6_ADDR" ]]; then
-    echo "未能檢測到 IPv4 或 IPv6 地址，請確認網卡 $NET_IF 配置正確。"
+if [[ -z "$IPV4_ADDR" ]]; then
+    echo "未檢測到 IPv4 地址，請檢查網卡配置。"
     exit 1
+fi
+
+if [[ -z "$IPV6_ADDR" ]]; then
+    echo "未檢測到 IPv6 地址，請檢查網卡配置。"
 fi
 
 # 創建配置文件目錄和日誌目錄
@@ -41,11 +47,11 @@ mkdir -p /opt/dante/etc
 mkdir -p /opt/dante/log
 
 # 配置帳密文件
-echo "配置帳密文件..."
-cat > "$AUTH_FILE" <<EOL
+echo "生成帳密文件..."
+cat > "$PASS_FILE" <<EOL
 $DEFAULT_USER: $DEFAULT_PASS
 EOL
-chmod 600 "$AUTH_FILE"
+chmod 600 "$PASS_FILE"
 
 # 配置 danted.conf 文件
 echo "生成 danted.conf 配置文件..."
@@ -62,8 +68,8 @@ socksmethod: username
 user.privileged: root
 user.unprivileged: $UNPRIVILEGED_USER
 
-# 用戶驗證文件
-userlist: $AUTH_FILE
+# 自定義帳密文件
+userfile: $PASS_FILE
 
 # 訪問控制規則
 client pass {
