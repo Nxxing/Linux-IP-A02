@@ -25,11 +25,6 @@ if [[ -z "$IPV4_ADDR" || -z "$IPV6_ADDR" ]]; then
     exit 1
 fi
 
-# 創建用戶認證文件
-echo "創建用戶認證信息..."
-echo "$USER $PASS" > /etc/dante.passwd
-chmod 600 /etc/dante.passwd
-
 # 配置 danted.conf 文件
 echo "生成 danted.conf 配置文件..."
 cat > /opt/dante/etc/danted.conf <<EOL
@@ -42,7 +37,10 @@ external: $NET_IF
 
 socksmethod: username
 user.privileged: root
-user.unprivileged: root  # 測試設置為 root（可視情況修改為 nobody）
+user.unprivileged: nobody
+
+# 認證用戶列表
+userlist: /opt/dante/etc/sockd.passwd
 
 # 訪問控制規則
 client pass {
@@ -58,15 +56,20 @@ socks pass {
     from: 0.0.0.0/0 to: 0.0.0.0/0
     log: connect error
     protocol: tcp udp
-    username: $USER
 }
 socks pass {
     from: ::/0 to: ::/0
     log: connect error
     protocol: tcp udp
-    username: $USER
 }
 EOL
+
+# 配置認證文件
+echo "配置用戶列表文件..."
+cat > /opt/dante/etc/sockd.passwd <<EOL
+$USER: $PASS
+EOL
+chmod 600 /opt/dante/etc/sockd.passwd
 
 # 配置 systemd 服務文件
 echo "配置 systemd 服務..."
