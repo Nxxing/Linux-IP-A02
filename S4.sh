@@ -5,7 +5,7 @@ echo "配置 Dante Server 開始..."
 
 
 # 配置文件路徑
-CONF_PATH="/opt/dante/etc/danted.conf"
+CONF_PATH="/etc/danted.conf"
 
 # 創建 Dante 配置
 echo "正在生成配置文件..."
