@@ -3,13 +3,6 @@
 # 一鍵配置 Dante Server
 echo "配置 Dante Server 開始..."
 
-# 檢查是否已安裝 dante
-if ! command -v danted &>/dev/null; then
-  echo "未檢測到 Dante，正在安裝..."
-  apt update && apt install -y dante-server || { echo "Dante 安裝失敗"; exit 1; }
-else
-  echo "Dante 已安裝"
-fi
 
 # 配置文件路徑
 CONF_PATH="/opt/dante/etc/danted.conf"
