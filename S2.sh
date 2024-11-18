@@ -12,6 +12,10 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
+# 停止 Dante 服務（如服務正在運行）
+echo "停止 Dante 服務..."
+systemctl stop dante 2>/dev/null || echo "Dante 服務未在運行"
+
 # 檢測私有 IPv4 和 IPv6 地址
 IPV4_ADDR=$(ip -4 addr show "$NET_IF" | grep "inet " | awk '{print $2}' | cut -d/ -f1)
 IPV6_ADDR=$(ip -6 addr show "$NET_IF" | grep "inet6 " | grep "global" | awk '{print $2}' | cut -d/ -f1)
@@ -42,11 +46,11 @@ external: $NET_IF
 
 socksmethod: username
 user.privileged: root
-user.unprivileged: root
+user.unprivileged: nobody
 
 # 訪問控制規則
 client pass {
-    from: 0.0.0.0/0 port 1-65535 to: 0.0.0.0/0
+    from: 0.0.0.0/0 to: 0.0.0.0/0
     log: connect error
 }
 client pass {
@@ -68,7 +72,7 @@ socks pass {
 }
 EOL
 
-# 創建 systemd 服務文件
+# 配置 systemd 服務文件
 echo "配置 systemd 服務..."
 cat > /etc/systemd/system/dante.service <<EOL
 [Unit]
@@ -83,9 +87,12 @@ Restart=always
 WantedBy=multi-user.target
 EOL
 
+# 重新加載 systemd 配置
+echo "重新加載 systemd 配置..."
+systemctl daemon-reload
+
 # 啟動 Dante 服務
 echo "啟動 Dante 服務..."
-systemctl daemon-reload
 systemctl enable dante
 systemctl start dante
 
