@@ -9,7 +9,7 @@ fi
 # 配置參數
 SCRIPT_PATH="/usr/local/bin/update_danted_external.sh"
 SERVICE_PATH="/etc/systemd/system/update-danted.service"
-CONFIG_FILE="/etc/danted.conf"
+CONFIG_FILE="/opt/dante/etc/danted.conf"
 
 
 # 創建更新腳本
