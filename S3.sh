@@ -81,13 +81,11 @@ socks pass {
     from: 0.0.0.0/0 to: 0.0.0.0/0
     log: connect error
     protocol: tcp udp
-    username: $DEFAULT_USER
 }
 socks pass {
     from: ::/0 to: ::/0
     log: connect error
     protocol: tcp udp
-    username: $DEFAULT_USER
 }
 EOL
 
