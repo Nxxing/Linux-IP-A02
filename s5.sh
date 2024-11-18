@@ -11,11 +11,6 @@ SCRIPT_PATH="/usr/local/bin/update_danted_external.sh"
 SERVICE_PATH="/etc/systemd/system/update-danted.service"
 CONFIG_FILE="/etc/danted.conf"
 
-# 檢查 Danted 是否已安裝
-if ! command -v danted &> /dev/null; then
-  echo "Danted 未安裝，請先安裝 Danted"
-  exit
-fi
 
 # 創建更新腳本
 echo "創建更新腳本..."
