@@ -7,13 +7,18 @@ DANTE_BIN="/opt/dante/sbin/sockd"
 SYSTEMD_SERVICE="/etc/systemd/system/dante.service"
 
 # 自定義帳號和密碼
-DANTE_USER="proxyuser"  # 修改為您想要的帳號
-DANTE_PASS="proxypass"  # 修改為您想要的密碼
+DANTE_USER="proxyuser"  # 修改為您的帳號
+DANTE_PASS="proxypass"  # 修改為您的密碼
 
-# 確認網卡名稱和可用的 IP 地址
+# 確認網卡名稱和私有 IPv4 地址
 NET_IF="ens5"
 IPV4_ADDR=$(ip -4 addr show "$NET_IF" | grep "inet " | awk '{print $2}' | cut -d/ -f1)
-IPV6_ADDR=$(ip -6 addr show "$NET_IF" | grep "inet6 " | grep "global" | awk '{print $2}' | cut -d/ -f1)
+
+# 檢查是否成功獲取私有 IPv4 地址
+if [[ -z "$IPV4_ADDR" ]]; then
+    echo "Error: Unable to fetch private IPv4 address for $NET_IF"
+    exit 1
+fi
 
 # 檢查必要的目錄
 mkdir -p /opt/dante/log
@@ -29,31 +34,20 @@ logoutput: stderr
 
 # 綁定網卡和端口
 internal: $NET_IF port = 3128
-external: $NET_IF
+external: $IPV4_ADDR
 
 # 認證方式
 socksmethod: username
 user.privileged: root
 user.unprivileged: nobody
 
-# 訪問控制規則 (IPv4 和 IPv6)
+# 訪問控制規則
 client pass {
     from: 0.0.0.0/0 to: 0.0.0.0/0
     log: connect error
 }
-client pass {
-    from: ::/0 to: ::/0
-    log: connect error
-}
-
 socks pass {
     from: 0.0.0.0/0 to: 0.0.0.0/0
-    log: connect error
-    protocol: tcp udp
-    username: $DANTE_USER
-}
-socks pass {
-    from: ::/0 to: ::/0
     log: connect error
     protocol: tcp udp
     username: $DANTE_USER
