@@ -12,30 +12,6 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# 更新系統並安裝必要工具
-echo "更新系統並安裝必要依賴..."
-if [ -f /etc/debian_version ]; then
-    apt update && apt install -y gcc make libpam0g-dev
-elif [ -f /etc/redhat-release ]; then
-    yum install -y gcc make pam-devel
-else
-    echo "不支持的系統版本，請手動安裝依賴。"
-    exit 1
-fi
-
-# 下載並安裝 Dante
-echo "下載並安裝 Dante..."
-DANTE_URL="http://www.inet.no/dante/files/dante-1.4.3.tar.gz"
-curl -O "$DANTE_URL"
-tar xzf dante-1.4.3.tar.gz
-cd dante-1.4.3 || exit
-./configure --prefix=/opt/dante
-make && make install
-
-# 創建配置文件目錄和日誌目錄
-mkdir -p /opt/dante/etc
-mkdir -p /opt/dante/log
-
 # 檢測私有 IPv4 和 IPv6 地址
 IPV4_ADDR=$(ip -4 addr show "$NET_IF" | grep "inet " | awk '{print $2}' | cut -d/ -f1)
 IPV6_ADDR=$(ip -6 addr show "$NET_IF" | grep "inet6 " | grep "global" | awk '{print $2}' | cut -d/ -f1)
@@ -44,6 +20,10 @@ if [[ -z "$IPV4_ADDR" || -z "$IPV6_ADDR" ]]; then
     echo "未能檢測到 IPv4 或 IPv6 地址，請確認網卡 $NET_IF 配置正確。"
     exit 1
 fi
+
+# 創建配置目錄和日誌目錄
+mkdir -p /opt/dante/etc
+mkdir -p /opt/dante/log
 
 # 創建用戶認證文件
 echo "創建用戶認證信息..."
@@ -114,7 +94,7 @@ echo "驗證 Dante 服務狀態..."
 systemctl status dante
 
 # 提供配置信息
-echo "Dante 安裝完成，代理信息如下："
+echo "Dante 配置完成，代理信息如下："
 echo "--------------------------------"
 echo "IPv4 地址: $IPV4_ADDR"
 echo "IPv6 地址: $IPV6_ADDR"
