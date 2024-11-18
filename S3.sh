@@ -42,7 +42,7 @@ external: $NET_IF
 
 socksmethod: username none
 user.privileged: root
-user.unprivileged: nobody
+user.unprivileged: root
 
 # 訪問控制規則
 client pass {
