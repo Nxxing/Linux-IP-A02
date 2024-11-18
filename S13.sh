@@ -15,15 +15,33 @@ dnf update -y
 
 # 安裝必要的依賴包
 echo "安裝必要的依賴包..."
-dnf install -y epel-release
-dnf install -y dante-server
+dnf install -y gcc make libwrap-devel openssl-devel wget
 
-# 檢查 Dante 是否安裝成功
-if ! command -v danted &>/dev/null; then
-  echo "Dante 服務器安裝失敗。請檢查存儲庫設置或手動安裝。"
+# 定義 Dante 的版本
+DANTE_VERSION="1.4.3"
+
+# 下載 Dante 源碼
+echo "下載 Dante 源碼..."
+cd /usr/local/src
+wget https://www.inet.no/dante/files/dante-$DANTE_VERSION.tar.gz
+
+# 解壓源碼
+echo "解壓源碼..."
+tar -xzf dante-$DANTE_VERSION.tar.gz
+cd dante-$DANTE_VERSION
+
+# 編譯並安裝 Dante
+echo "編譯並安裝 Dante..."
+./configure --prefix=/usr/local --sysconfdir=/etc
+make
+make install
+
+# 確認 Dante 安裝成功
+if ! command -v /usr/local/sbin/sockd &>/dev/null; then
+  echo "Dante 編譯或安裝失敗。請檢查錯誤訊息。"
   exit 1
 fi
-echo "Dante 已安裝。"
+echo "Dante 已成功編譯並安裝。"
 
 # 配置文件路徑
 CONF_PATH="/etc/danted.conf"
@@ -89,15 +107,35 @@ echo "設置配置文件權限..."
 chown root:root "$CONF_PATH"
 chmod 644 "$CONF_PATH"
 
-# 啟用並啟動 Dante 服務
-echo "啟動並啟用 Dante 服務..."
+# 創建 systemd 服務文件
+echo "創建 systemd 服務文件..."
+cat <<EOF > /etc/systemd/system/sockd.service
+[Unit]
+Description=Dante SOCKS Proxy Server
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/usr/local/sbin/sockd -f /etc/danted.conf
+ExecReload=/bin/kill -HUP \$MAINPID
+PIDFile=/var/run/sockd.pid
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 重新加載 systemd 配置
+echo "重新加載 systemd 配置..."
 systemctl daemon-reload
-systemctl restart danted
-systemctl enable danted
+
+# 啟動並啟用 Dante 服務
+echo "啟動並啟用 Dante 服務..."
+systemctl start sockd
+systemctl enable sockd
 
 # 檢查 Dante 服務狀態
 echo "檢查 Dante 服務狀態..."
-if systemctl is-active --quiet danted; then
+if systemctl is-active --quiet sockd; then
   echo "Dante 服務已成功啟動並正在運行。"
 else
   echo "Dante 服務啟動失敗，請檢查配置文件或日誌。"
