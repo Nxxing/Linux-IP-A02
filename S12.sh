@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# 一鍵配置 Dante Server
-echo "開始配置 Dante 代理服務器..."
+# 一鍵配置 Dante Server 適用於 Amazon Linux 2023
+echo "開始配置 Dante 代理服務器 (Amazon Linux 2023)..."
 
 # 檢查是否以 root 身份運行
 if [ "$EUID" -ne 0 ]; then
@@ -11,15 +11,19 @@ fi
 
 # 更新套件列表
 echo "更新套件列表..."
-apt update
+dnf update -y
 
-# 安裝 Dante（如果尚未安裝）
-if ! dpkg -l | grep -qw dante-server; then
-  echo "安裝 Dante 服務器..."
-  apt install -y dante-server || { echo "Dante 安裝失敗"; exit 1; }
-else
-  echo "Dante 已安裝。"
+# 安裝必要的依賴包
+echo "安裝必要的依賴包..."
+dnf install -y epel-release
+dnf install -y dante-server
+
+# 檢查 Dante 是否安裝成功
+if ! command -v danted &>/dev/null; then
+  echo "Dante 服務器安裝失敗。請檢查存儲庫設置或手動安裝。"
+  exit 1
 fi
+echo "Dante 已安裝。"
 
 # 配置文件路徑
 CONF_PATH="/etc/danted.conf"
@@ -87,6 +91,7 @@ chmod 644 "$CONF_PATH"
 
 # 啟用並啟動 Dante 服務
 echo "啟動並啟用 Dante 服務..."
+systemctl daemon-reload
 systemctl restart danted
 systemctl enable danted
 
@@ -101,28 +106,26 @@ fi
 
 # 設置防火牆規則
 echo "設置防火牆規則以允許端口 3128 的流量..."
-if command -v ufw &>/dev/null; then
-  ufw allow 3128/tcp
-  ufw allow 3128/udp
-  echo "已使用 UFW 添加防火牆規則。"
-elif command -v firewall-cmd &>/dev/null; then
+if command -v firewall-cmd &>/dev/null; then
   firewall-cmd --permanent --add-port=3128/tcp
   firewall-cmd --permanent --add-port=3128/udp
   firewall-cmd --reload
   echo "已使用 firewalld 添加防火牆規則。"
-else
+elif command -v iptables &>/dev/null; then
   iptables -I INPUT -p tcp --dport 3128 -j ACCEPT
   iptables -I INPUT -p udp --dport 3128 -j ACCEPT
   ip6tables -I INPUT -p tcp --dport 3128 -j ACCEPT
   ip6tables -I INPUT -p udp --dport 3128 -j ACCEPT
   echo "已使用 iptables 添加防火牆規則。"
-  # 持久化 iptables 規則（Ubuntu/Debian）
+  # 持久化 iptables 規則
   if command -v netfilter-persistent &>/dev/null; then
     netfilter-persistent save
   elif command -v iptables-save &>/dev/null; then
     iptables-save > /etc/iptables/rules.v4
     ip6tables-save > /etc/iptables/rules.v6
   fi
+else
+  echo "未檢測到防火牆管理工具（firewalld 或 iptables）。請手動設置防火牆規則。"
 fi
 
 echo "防火牆規則已設置。"
