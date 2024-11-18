@@ -12,32 +12,63 @@ fi
 # 更新套件列表
 echo "更新套件列表..."
 dnf update -y
+if [ $? -ne 0 ]; then
+  echo "套件列表更新失敗。"
+  exit 1
+fi
 
 # 安裝必要的依賴包
 echo "安裝必要的依賴包..."
-dnf install -y gcc make libwrap-devel openssl-devel wget
+dnf install -y gcc make libwrap-devel openssl-devel wget tar
+if [ $? -ne 0 ]; then
+  echo "安裝依賴包失敗。"
+  exit 1
+fi
 
 # 定義 Dante 的版本
 DANTE_VERSION="1.4.3"
 
 # 下載 Dante 源碼
 echo "下載 Dante 源碼..."
-cd /usr/local/src
+cd /usr/local/src || { echo "無法進入 /usr/local/src 目錄。"; exit 1; }
 wget https://www.inet.no/dante/files/dante-$DANTE_VERSION.tar.gz
+if [ $? -ne 0 ]; then
+  echo "下載 Dante 源碼失敗。"
+  exit 1
+fi
 
 # 解壓源碼
 echo "解壓源碼..."
 tar -xzf dante-$DANTE_VERSION.tar.gz
-cd dante-$DANTE_VERSION
+if [ $? -ne 0 ]; then
+  echo "解壓 Dante 源碼失敗。"
+  exit 1
+fi
+
+cd dante-$DANTE_VERSION || { echo "無法進入 Dante 源碼目錄。"; exit 1; }
 
 # 編譯並安裝 Dante
 echo "編譯並安裝 Dante..."
 ./configure --prefix=/usr/local --sysconfdir=/etc
+if [ $? -ne 0 ]; then
+  echo "Dante configure 失敗。請檢查 configure 日誌。"
+  exit 1
+fi
+
 make
+if [ $? -ne 0 ]; then
+  echo "Dante make 失敗。請檢查錯誤訊息。"
+  exit 1
+fi
+
 make install
+if [ $? -ne 0 ]; then
+  echo "Dante make install 失敗。請檢查錯誤訊息。"
+  exit 1
+fi
 
 # 確認 Dante 安裝成功
-if ! command -v /usr/local/sbin/sockd &>/dev/null; then
+if [ ! -f /usr/local/sbin/sockd ]; then
   echo "Dante 編譯或安裝失敗。請檢查錯誤訊息。"
   exit 1
 fi
@@ -109,7 +140,7 @@ chmod 644 "$CONF_PATH"
 
 # 創建 systemd 服務文件
 echo "創建 systemd 服務文件..."
-cat <<EOF > /etc/systemd/system/sockd.service
+cat <<EOF > /etc/systemd/system/danted.service
 [Unit]
 Description=Dante SOCKS Proxy Server
 After=network.target
@@ -130,12 +161,12 @@ systemctl daemon-reload
 
 # 啟動並啟用 Dante 服務
 echo "啟動並啟用 Dante 服務..."
-systemctl start sockd
-systemctl enable sockd
+systemctl start danted
+systemctl enable danted
 
 # 檢查 Dante 服務狀態
 echo "檢查 Dante 服務狀態..."
-if systemctl is-active --quiet sockd; then
+if systemctl is-active --quiet danted; then
   echo "Dante 服務已成功啟動並正在運行。"
 else
   echo "Dante 服務啟動失敗，請檢查配置文件或日誌。"
