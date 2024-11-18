@@ -1,138 +1,91 @@
 #!/bin/bash
 
-# 配置參數
-PORT=3128                          # 代理端口
-NET_IF="ens5"                      # 網卡名稱 (根據實際情況修改)
-LOGFILE="/opt/dante/log/dante.log" # 日誌文件
-CONFIG_FILE="/opt/dante/etc/danted.conf" # 配置文件
-SERVICE_FILE="/etc/systemd/system/dante.service"
-UNPRIVILEGED_USER="nobody"         # 非特權用戶
+# 一鍵配置 Dante Server
+echo "配置 Dante Server 開始..."
 
-# 預設系統用戶和密碼
-DEFAULT_USER="proxyuser"
-DEFAULT_PASS="X3KVTD6tsFkTtuf5"
-
-# 確保腳本以 root 身份運行
-if [[ $EUID -ne 0 ]]; then
-    echo "請以 root 權限運行此腳本"
-    exit 1
+# 檢查是否已安裝 dante
+if ! command -v danted &>/dev/null; then
+  echo "未檢測到 Dante，正在安裝..."
+  apt update && apt install -y dante-server || { echo "Dante 安裝失敗"; exit 1; }
+else
+  echo "Dante 已安裝"
 fi
 
-# 確保非特權用戶存在
-if ! id -u "$UNPRIVILEGED_USER" >/dev/null 2>&1; then
-    echo "創建非特權用戶 $UNPRIVILEGED_USER..."
-    useradd -r -s /sbin/nologin "$UNPRIVILEGED_USER"
-fi
+# 配置文件路徑
+CONF_PATH="/opt/dante/etc/danted.conf"
 
-# 創建代理用戶
-if ! id -u "$DEFAULT_USER" >/dev/null 2>&1; then
-    echo "創建代理用戶 $DEFAULT_USER..."
-    useradd -s /sbin/nologin "$DEFAULT_USER"
-    echo "$DEFAULT_USER:$DEFAULT_PASS" | chpasswd
-fi
+# 創建 Dante 配置
+echo "正在生成配置文件..."
+cat <<EOF >"$CONF_PATH"
+logoutput: syslog
+internal: 0.0.0.0 port = 3128   # IPv4 支持
+internal: :: port = 3128       # IPv6 支持
+external: 0.0.0.0              # IPv4 外部地址
+external: ::                   # IPv6 外部地址
 
-# 停止 Dante 服務
-echo "停止 Dante 服務..."
-systemctl stop dante 2>/dev/null || echo "Dante 服務未在運行"
+method: username
 
-# 檢測私有 IPv4 和 IPv6 地址
-IPV4_ADDR=$(ip -4 addr show "$NET_IF" | grep "inet " | awk '{print $2}' | cut -d/ -f1)
-IPV6_ADDR=$(ip -6 addr show "$NET_IF" | grep "inet6 " | grep "global" | awk '{print $2}' | cut -d/ -f1)
-
-if [[ -z "$IPV4_ADDR" ]]; then
-    echo "未檢測到 IPv4 地址，請檢查網卡配置。"
-    exit 1
-fi
-
-if [[ -z "$IPV6_ADDR" ]]; then
-    echo "未檢測到 IPv6 地址，請檢查網卡配置。"
-fi
-
-# 創建配置文件目錄和日誌目錄
-mkdir -p /opt/dante/etc
-mkdir -p /opt/dante/log
-
-# 配置 danted.conf 文件
-echo "生成 danted.conf 配置文件..."
-cat > "$CONFIG_FILE" <<EOL
-logoutput: $LOGFILE
-logoutput: stderr
-
-# 綁定網卡和端口
-internal: $NET_IF port = $PORT
-internal: :: port = $PORT
-external: $NET_IF
-
-socksmethod: username
-user.privileged: root
-user.unprivileged: $UNPRIVILEGED_USER
+user.privileged: proxy
+user.notprivileged: nobody
+user.libwrap: nobody
 
 # 訪問控制規則
 client pass {
-    from: 0.0.0.0/0 port 1-65535 to: 0.0.0.0/0
-    log: connect error
-}
-client pass {
-    from: ::/0 port 1-65535 to: ::/0
-    log: connect error
-}
-
-socks pass {
     from: 0.0.0.0/0 to: 0.0.0.0/0
-    log: connect error
-    protocol: tcp udp
-}
-socks pass {
     from: ::/0 to: ::/0
-    log: connect error
-    protocol: tcp udp
+    log: connect
 }
-EOL
 
-# 配置 systemd 服務文件
-echo "配置 systemd 服務..."
-cat > "$SERVICE_FILE" <<EOL
-[Unit]
-Description=Dante SOCKS proxy
-After=network.target
+pass {
+    from: 0.0.0.0/0 to: 0.0.0.0/0
+    from: ::/0 to: ::/0
+    protocol: tcp udp
+    log: connect
+}
+EOF
 
-[Service]
-ExecStart=/opt/dante/sbin/sockd -f $CONFIG_FILE
-Restart=always
+echo "配置文件已生成：$CONF_PATH"
 
-[Install]
-WantedBy=multi-user.target
-EOL
+# 添加用戶（如果未存在）
+USERNAME="user"
+PASSWORD="X3KVTD6tsFkTtuf5"
 
-# 開放防火牆規則
-echo "配置防火牆..."
-iptables -A INPUT -p tcp --dport $PORT -j ACCEPT
-ip6tables -A INPUT -p tcp --dport $PORT -j ACCEPT
+if id "$USERNAME" &>/dev/null; then
+  echo "用戶 $USERNAME 已存在"
+else
+  echo "創建用戶 $USERNAME..."
+  useradd -m "$USERNAME"
+  echo "$USERNAME:$PASSWORD" | chpasswd
+  echo "用戶 $USERNAME 已創建"
+fi
 
-# 重新加載 systemd 配置
-echo "重新加載 systemd 配置..."
-systemctl daemon-reload
+# 啟用並啟動 Dante 服務
+echo "啟動 Dante..."
+systemctl restart danted
+systemctl enable danted
 
-# 啟動 Dante 服務
-echo "啟動 Dante 服務..."
-systemctl enable dante
-systemctl start dante
+# 設置防火牆規則
+echo "設置防火牆規則..."
+iptables -I INPUT -p tcp --dport 3128 -j ACCEPT
+iptables -I INPUT -p udp --dport 3128 -j ACCEPT
 
-# 測試代理
-echo "測試代理..."
-echo "測試 IPv4 代理..."
-curl -x socks5h://$DEFAULT_USER:$DEFAULT_PASS@${IPV4_ADDR}:${PORT} -4 http://ipv4.icanhazip.com
-echo "測試 IPv6 代理..."
-curl -x socks5h://$DEFAULT_USER:$DEFAULT_PASS@[${IPV6_ADDR}]:${PORT} -6 http://ipv6.icanhazip.com
+ip6tables -I INPUT -p tcp --dport 3128 -j ACCEPT
+ip6tables -I INPUT -p udp --dport 3128 -j ACCEPT
 
-# 顯示完成信息
-echo "Dante 配置完成，代理信息如下："
-echo "--------------------------------"
-echo "IPv4 地址: $IPV4_ADDR"
-echo "IPv6 地址: $IPV6_ADDR"
-echo "端口: $PORT"
-echo "用戶名: $DEFAULT_USER"
-echo "密碼: $DEFAULT_PASS"
-echo "--------------------------------"
-echo "日誌文件: $LOGFILE"
-echo "如需排錯，請檢查日誌文件。"
+echo "防火牆規則已設置"
+
+# 驗證服務
+echo "Dante 已配置完成，正在檢查服務狀態..."
+if systemctl status danted | grep -q "active (running)"; then
+  echo "Dante 服務已啟動成功，端口：3128"
+else
+  echo "Dante 啟動失敗，請檢查配置或日誌"
+  exit 1
+fi
+
+echo "請使用以下用戶名和密碼測試代理服務："
+echo "地址: <伺服器IP>:3128"
+echo "用戶名: $USERNAME"
+echo "密碼: $PASSWORD"
+
+echo "配置完成！"
