@@ -169,6 +169,10 @@ EOF
 echo "重新加載 Systemd 配置..."
 systemctl daemon-reload
 
+# 停止現有的 XRAY 服務（如果存在）
+echo "停止現有的 XRAY 服務（如果存在）..."
+systemctl stop xray.service 2>/dev/null
+
 # 啟動並啟用 XRAY 服務
 echo "啟動並啟用 XRAY 服務..."
 systemctl start xray
