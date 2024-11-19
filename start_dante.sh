@@ -39,6 +39,7 @@ if systemctl restart danted; then
   echo "Danted 配置已更新，external 綁定到私有 IPv4: \$PRIVATE_IPV4"
 else
   echo "重啟 Danted 失敗，請檢查配置文件和日誌。"
+  reboot
   exit 1
 fi
 EOL
