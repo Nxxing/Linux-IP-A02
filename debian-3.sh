@@ -82,6 +82,14 @@ else
   IPV6_ENABLED=1
 fi
 
+# 確保 /etc/xray 目錄存在
+echo "確保 /etc/xray 目錄存在..."
+mkdir -p /etc/xray
+if [ $? -ne 0 ]; then
+  echo "無法創建 /etc/xray 目錄。"
+  exit 1
+fi
+
 # 創建 XRAY 配置文件
 echo "生成配置文件：$CONFIG_PATH"
 cat <<EOF >"$CONFIG_PATH"
