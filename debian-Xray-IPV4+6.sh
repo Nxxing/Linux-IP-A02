@@ -1,7 +1,10 @@
 #!/bin/bash
 
 # 一鍵配置 XRAY HTTP 代理服務器（雙棧支持）適用於 Debian
-echo "開始配置 XRAY HTTP 代理服務器 (Debian) 支持 IPv4 和 IPv6..."
+echo "==============================="
+echo "  XRAY HTTP 代理服務器安裝腳本"
+echo "  支持 IPv4 和 IPv6 雙棧協議"
+echo "==============================="
 
 # 檢查是否以 root 身份運行
 if [ "$EUID" -ne 0 ]; then
@@ -9,17 +12,32 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# 定義變量
+# 定義預設值
+DEFAULT_USERNAME="proxyuser"
+DEFAULT_PASSWORD="X3KVTD6tsFkTtuf5"
+DEFAULT_PORT=1080
 XRAY_VERSION="1.8.3"  # 請根據官方最新版本進行更新
+
+# 提示用戶輸入自定義值，若無輸入則使用預設值
+read -p "請輸入代理用戶名 [預設: $DEFAULT_USERNAME]: " PROXY_USERNAME
+PROXY_USERNAME=${PROXY_USERNAME:-$DEFAULT_USERNAME}
+
+read -s -p "請輸入代理密碼 [預設: $DEFAULT_PASSWORD]: " PROXY_PASSWORD
+echo
+PROXY_PASSWORD=${PROXY_PASSWORD:-$DEFAULT_PASSWORD}
+
+read -p "請輸入代理端口 [預設: $DEFAULT_PORT]: " PROXY_PORT
+PROXY_PORT=${PROXY_PORT:-$DEFAULT_PORT}
+
+echo "--------------------------------"
+echo "  代理用戶名: $PROXY_USERNAME"
+echo "  代理密碼: $PROXY_PASSWORD"
+echo "  代理端口: $PROXY_PORT"
+echo "--------------------------------"
+
+# 定義路徑
 CONFIG_PATH="/etc/xray/config.json"
 SERVICE_PATH="/etc/systemd/system/xray.service"
-
-# 配置用戶資訊
-PROXY_USERNAME="user"
-PROXY_PASSWORD="X3KVTD6tsFkTtuf5"  # 請替換為強密碼
-
-# 設定代理端口
-PROXY_PORT=3182  # 默認 HTTP 代理端口，可更改
 
 # 更新套件列表
 echo "更新套件列表..."
@@ -166,15 +184,20 @@ else
 fi
 
 # 提供代理連接資訊
-SERVER_IP=$(hostname -I | awk '{print $1}')
+SERVER_IP_V4=$(hostname -I | awk '{print $1}')
+SERVER_IP_V6="[$EXTERNAL_IPV6]"
+
+echo "--------------------------------"
 echo "XRAY HTTP 代理服務器配置完成！"
 echo "請使用以下資訊配置您的客戶端："
-echo "地址: $SERVER_IP:$PROXY_PORT"
+echo "--------------------------------"
+echo "代理地址 (IPv4): $SERVER_IP_V4:$PROXY_PORT"
 if [ $IPV6_ENABLED -eq 1 ]; then
-  echo "地址 (IPv6): [$EXTERNAL_IPV6]:$PROXY_PORT"
+  echo "代理地址 (IPv6): $SERVER_IP_V6:$PROXY_PORT"
 fi
 echo "用戶名: $PROXY_USERNAME"
 echo "密碼: $PROXY_PASSWORD"
+echo "--------------------------------"
 
 # 測試代理連接（可選）
 echo "正在測試代理連接..."
