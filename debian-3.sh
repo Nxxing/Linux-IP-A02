@@ -15,11 +15,11 @@ CONFIG_PATH="/etc/xray/config.json"
 SERVICE_PATH="/etc/systemd/system/xray.service"
 
 # 配置用戶資訊
-PROXY_USERNAME="proxyuser"
+PROXY_USERNAME="user"
 PROXY_PASSWORD="X3KVTD6tsFkTtuf5"  # 請替換為強密碼
 
 # 設定代理端口
-PROXY_PORT=3080  # 默認 HTTP 代理端口，可更改
+PROXY_PORT=3182  # 默認 HTTP 代理端口，可更改
 
 # 更新套件列表
 echo "更新套件列表..."
