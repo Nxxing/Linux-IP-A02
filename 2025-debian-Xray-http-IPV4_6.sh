@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# 一鍵配置 XRAY HTTP 代理服務器（雙棧支持）適用於 Debian
+# 一鍵配置 XRAY SOCKS5 代理服務器（僅 IPv4，支持帳密驗證和 UDP）適用於 Debian
 echo "==============================="
-echo "  XRAY HTTP 代理服務器安裝腳本"
-echo "  支持 IPv4 和 IPv6 雙棧協議"
+echo "  XRAY SOCKS5 代理服務器安裝腳本"
+echo "  僅支持 IPv4，支持帳密驗證和 UDP"
 echo "==============================="
 
 # 檢查是否以 root 身份運行
@@ -13,10 +13,10 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # 定義預設值
-DEFAULT_USERNAME="proxyuser"
-DEFAULT_PASSWORD="X3KVTD6tsFkTtuf5"
-DEFAULT_PORT=1080
-XRAY_VERSION="1.8.3"  # 請根據官方最新版本進行更新
+DEFAULT_USERNAME="xd"
+DEFAULT_PASSWORD="xdxd"
+DEFAULT_PORT=61111
+XRAY_VERSION="1.8.3"  # 根據需要更新至最新版本
 
 # 使用命令列參數，如果未提供則使用預設值
 PROXY_PORT=${1:-$DEFAULT_PORT}
@@ -51,34 +51,7 @@ echo "解壓 XRAY..."
 unzip -o /tmp/Xray-linux-64.zip -d /usr/local/bin/ \
   || { echo "解壓 XRAY 失敗。"; exit 1; }
 
-# 賦予執行權限
 chmod +x /usr/local/bin/xray
-
-# 創建代理用戶（如果未存在）
-if id "$PROXY_USERNAME" &>/dev/null; then
-  echo "用戶 $PROXY_USERNAME 已存在。"
-else
-  echo "創建用戶 $PROXY_USERNAME..."
-  useradd -M -s /usr/sbin/nologin "$PROXY_USERNAME"
-  echo "$PROXY_USERNAME:$PROXY_PASSWORD" | chpasswd
-  echo "用戶 $PROXY_USERNAME 已創建並設置密碼。"
-fi
-
-# 獲取伺服器的外部 IPv4 地址
-EXTERNAL_IPV4=$(ip -4 route get 1.1.1.1 | awk '{print $7}' | head -n1)
-if [ -z "$EXTERNAL_IPV4" ]; then
-  echo "未檢測到外部 IPv4 地址。請確保伺服器已配置 IPv4 地址。"
-  exit 1
-fi
-
-# 獲取伺服器的外部 IPv6 地址（如果存在）
-EXTERNAL_IPV6=$(ip -6 route get 2001:4860:4860::8888 | awk '{print $7}' | head -n1)
-if [ -z "$EXTERNAL_IPV6" ]; then
-  echo "未檢測到外部 IPv6 地址，將僅配置 IPv4。"
-  IPV6_ENABLED=0
-else
-  IPV6_ENABLED=1
-fi
 
 # 確保 /etc/xray 目錄存在
 echo "確保 /etc/xray 目錄存在..."
@@ -91,17 +64,17 @@ cat <<EOF >"$CONFIG_PATH"
   "inbounds": [
     {
       "port": $PROXY_PORT,
-      "listen": "::",  // 監聽所有 IPv4 和 IPv6 地址
+      "listen": "0.0.0.0",  // 僅 IPv4
       "protocol": "socks",
       "settings": {
+        "auth": "password",
         "accounts": [
           {
             "user": "$PROXY_USERNAME",
             "pass": "$PROXY_PASSWORD"
           }
         ],
-        "timeout": 0,
-        "allowTransparent": false
+        "udp": true
       }
     }
   ],
@@ -129,7 +102,7 @@ chmod 644 "$CONFIG_PATH"
 echo "創建 Systemd 服務文件：$SERVICE_PATH"
 cat <<EOF > "$SERVICE_PATH"
 [Unit]
-Description=XRAY HTTP Proxy Service
+Description=XRAY SOCKS5 Proxy Service
 After=network.target
 
 [Service]
@@ -164,25 +137,22 @@ else
 fi
 
 # 提供代理連接資訊
-SERVER_IP_V4=$(hostname -I | awk '{print $1}')
-SERVER_IP_V6="[$EXTERNAL_IPV6]"
+SERVER_IP=$(hostname -I | awk '{print $1}')
 
 echo "--------------------------------"
-echo "XRAY HTTP 代理服務器配置完成！"
+echo "XRAY SOCKS5 代理服務器配置完成！"
 echo "請使用以下資訊配置您的客戶端："
 echo "--------------------------------"
-echo "代理地址 (IPv4): $SERVER_IP_V4:$PROXY_PORT"
-if [ $IPV6_ENABLED -eq 1 ]; then
-  echo "代理地址 (IPv6): $SERVER_IP_V6:$PROXY_PORT"
-fi
+echo "代理地址: $SERVER_IP:$PROXY_PORT"
 echo "用戶名: $PROXY_USERNAME"
 echo "密碼: $PROXY_PASSWORD"
+echo "加密方式: (不適用於 SOCKS5，僅驗證身份)"
 echo "--------------------------------"
 
 # 測試代理連接（可選）
 echo "正在測試代理連接..."
 sleep 5
-TEST_IP=$(curl -s --proxy http://$PROXY_USERNAME:$PROXY_PASSWORD@$EXTERNAL_IPV4:$PROXY_PORT https://api.ipify.org)
+TEST_IP=$(curl -s --socks5 $SERVER_IP:$PROXY_PORT https://api.ipify.org)
 if [ -n "$TEST_IP" ]; then
   echo "代理連接成功。代理外網 IP 為：$TEST_IP"
 else
