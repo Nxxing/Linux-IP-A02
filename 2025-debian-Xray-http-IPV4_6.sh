@@ -12,6 +12,18 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# 禁用系統 IPv6 支持
+echo "禁用系統 IPv6 支持..."
+sysctl -w net.ipv6.conf.all.disable_ipv6=1
+sysctl -w net.ipv6.conf.default.disable_ipv6=1
+# 將設置寫入 /etc/sysctl.conf 以永久生效
+if ! grep -q "net.ipv6.conf.all.disable_ipv6=1" /etc/sysctl.conf; then
+  echo "net.ipv6.conf.all.disable_ipv6=1" >> /etc/sysctl.conf
+fi
+if ! grep -q "net.ipv6.conf.default.disable_ipv6=1" /etc/sysctl.conf; then
+  echo "net.ipv6.conf.default.disable_ipv6=1" >> /etc/sysctl.conf
+fi
+
 # 定義預設值
 DEFAULT_USERNAME="xd"
 DEFAULT_PASSWORD="xdxd"
