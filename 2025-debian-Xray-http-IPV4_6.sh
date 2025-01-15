@@ -92,7 +92,7 @@ cat <<EOF >"$CONFIG_PATH"
     {
       "port": $PROXY_PORT,
       "listen": "::",  // 監聽所有 IPv4 和 IPv6 地址
-      "protocol": "http",
+      "protocol": "socks",
       "settings": {
         "accounts": [
           {
