@@ -39,17 +39,45 @@ sysctl -w net.ipv6.conf.default.disable_ipv6=1
 grep -q "^net.ipv6.conf.all.disable_ipv6=1" /etc/sysctl.conf || echo "net.ipv6.conf.all.disable_ipv6=1" >> /etc/sysctl.conf
 grep -q "^net.ipv6.conf.default.disable_ipv6=1" /etc/sysctl.conf || echo "net.ipv6.conf.default.disable_ipv6=1" >> /etc/sysctl.conf
 
-# 定義路徑
-CONFIG_PATH="/etc/xray/config.json"
+# 檢查端口是否被佔用，若被佔用則終止相關進程
+echo "檢查端口 $PROXY_PORT 是否被佔用..."
+PORT_IN_USE=$(ss -tuln | grep ":$PROXY_PORT ")
+if [ -n "$PORT_IN_USE" ]; then
+  echo "端口 $PROXY_PORT 已被佔用，正在終止相關進程..."
+  # 獲取佔用該端口的進程 PID
+  PIDS=$(sudo lsof -i TCP:$PROXY_PORT -t)
+  if [ -n "$PIDS" ]; then
+    echo "終止進程: $PIDS"
+    kill -9 $PIDS
+    echo "進程已終止。"
+  fi
+  # 檢查 UDP 端口
+  PIDS_UDP=$(sudo lsof -i UDP:$PROXY_PORT -t)
+  if [ -n "$PIDS_UDP" ]; then
+    echo "終止 UDP 進程: $PIDS_UDP"
+    kill -9 $PIDS_UDP
+    echo "UDP 進程已終止。"
+  fi
+else
+  echo "端口 $PROXY_PORT 未被佔用。"
+fi
+
+# 定義時間戳和配置路徑
+TIMESTAMP=$(date +%Y%m%d%H%M%S)
+CONFIG_PATH="/etc/xray/config_${PROXY_PORT}_${TIMESTAMP}.json"
 SERVICE_PATH="/etc/systemd/system/xray.service"
 
 # 更新套件列表和安裝必要依賴包
+echo "更新套件列表..."
 apt update -y || { echo "套件列表更新失敗。"; exit 1; }
+echo "安裝必要的依賴包..."
 apt install -y wget unzip || { echo "安裝依賴包失敗。"; exit 1; }
 
 # 下載並安裝 XRAY
+echo "下載 XRAY..."
 wget https://github.com/XTLS/Xray-core/releases/download/v$XRAY_VERSION/Xray-linux-64.zip -O /tmp/Xray-linux-64.zip \
   || { echo "下載 XRAY 失敗。"; exit 1; }
+echo "解壓 XRAY..."
 unzip -o /tmp/Xray-linux-64.zip -d /usr/local/bin/ \
   || { echo "解壓 XRAY 失敗。"; exit 1; }
 chmod +x /usr/local/bin/xray
@@ -216,23 +244,27 @@ After=network.target
 
 [Service]
 User=root
-ExecStart=/usr/local/bin/xray run -config /etc/xray/config.json
+ExecStart=/usr/local/bin/xray run -config $CONFIG_PATH
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
+# 重新加載 Systemd 配置
 echo "重新加載 Systemd 配置..."
 systemctl daemon-reload
 
+# 停止現有的 XRAY 服務（如果存在）
 echo "停止現有的 XRAY 服務（如果存在）..."
 systemctl stop xray.service 2>/dev/null
 
+# 啟動並啟用 XRAY 服務
 echo "啟動並啟用 XRAY 服務..."
 systemctl start xray
 systemctl enable xray
 
+# 檢查 XRAY 服務狀態
 echo "檢查 XRAY 服務狀態..."
 if systemctl is-active --quiet xray; then
   echo "XRAY 服務已成功啟動並正在運行。"
@@ -241,6 +273,7 @@ else
   exit 1
 fi
 
+# 提供代理連接資訊
 SERVER_IP=$(hostname -I | awk '{print $1}')
 
 echo "--------------------------------"
@@ -265,11 +298,11 @@ echo "--------------------------------"
 echo "正在測試代理連接..."
 sleep 5
 if [ "$PROTOCOL" = "socks" ]; then
-  TEST_IP=$(curl -s --socks5 $SERVER_IP:$PROXY_PORT https://api.ipify.org)
+  TEST_IP=$(curl -s --socks5 $PROXY_USERNAME:$PROXY_PASSWORD@$SERVER_IP:$PROXY_PORT https://api.ipify.org)
 elif [ "$PROTOCOL" = "http" ]; then
   TEST_IP=$(curl -s --proxy http://$PROXY_USERNAME:$PROXY_PASSWORD@$SERVER_IP:$PROXY_PORT https://api.ipify.org)
 else
-  TEST_IP="N/A (請使用對應協議的客戶端進行測試)"
+  TEST_IP="N/A (請使用支持該協議的客戶端進行測試)"
 fi
 
 if [ "$TEST_IP" != "N/A" ] && [ -n "$TEST_IP" ]; then
