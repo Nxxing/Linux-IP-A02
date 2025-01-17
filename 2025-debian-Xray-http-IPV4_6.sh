@@ -3,7 +3,7 @@
 # 一鍵配置 XRAY 代理服務器適用於 Debian
 echo "==============================="
 echo "  XRAY 代理服務器安裝腳本"
-echo "  支持多協議（僅 IPv4，UDP）"
+echo "  支持多協議（僅 IPv4，UDP），多服務共存"
 echo "==============================="
 
 # 檢查是否以 root 身份運行
@@ -25,11 +25,19 @@ PROXY_USERNAME=${2:-$DEFAULT_USERNAME}
 PROXY_PASSWORD=${3:-$DEFAULT_PASSWORD}
 PROTOCOL=${4:-$DEFAULT_PROTOCOL}
 
+# 設定到期日參數
+if [ -z "$5" ]; then
+  EXPIRATION_DATE=$(date -d "+1 month" "+%Y-%m-%d %H:%M:%S")
+else
+  EXPIRATION_DATE="$5"
+fi
+
 echo "--------------------------------"
 echo "  協議類型: $PROTOCOL"
 echo "  代理用戶名: $PROXY_USERNAME"
 echo "  代理密碼: $PROXY_PASSWORD"
 echo "  代理端口: $PROXY_PORT"
+echo "  服務到期日: $EXPIRATION_DATE"
 echo "--------------------------------"
 
 # 禁用 IPv6 支持
@@ -44,15 +52,13 @@ echo "檢查端口 $PROXY_PORT 是否被佔用..."
 PORT_IN_USE=$(ss -tuln | grep ":$PROXY_PORT ")
 if [ -n "$PORT_IN_USE" ]; then
   echo "端口 $PROXY_PORT 已被佔用，正在終止相關進程..."
-  # 獲取佔用該端口的進程 PID
-  PIDS=$(sudo lsof -i TCP:$PROXY_PORT -t)
+  PIDS=$(lsof -i TCP:$PROXY_PORT -t)
   if [ -n "$PIDS" ]; then
     echo "終止進程: $PIDS"
     kill -9 $PIDS
     echo "進程已終止。"
   fi
-  # 檢查 UDP 端口
-  PIDS_UDP=$(sudo lsof -i UDP:$PROXY_PORT -t)
+  PIDS_UDP=$(lsof -i UDP:$PROXY_PORT -t)
   if [ -n "$PIDS_UDP" ]; then
     echo "終止 UDP 進程: $PIDS_UDP"
     kill -9 $PIDS_UDP
@@ -65,21 +71,20 @@ fi
 # 定義時間戳和配置路徑
 TIMESTAMP=$(date +%Y%m%d%H%M%S)
 CONFIG_PATH="/etc/xray/config_${PROXY_PORT}_${TIMESTAMP}.json"
-SERVICE_PATH="/etc/systemd/system/xray.service"
+SERVICE_NAME="xray_${PROXY_PORT}"
+SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 
 # 更新套件列表和安裝必要依賴包
 echo "更新套件列表..."
 apt update -y || { echo "套件列表更新失敗。"; exit 1; }
 echo "安裝必要的依賴包..."
-apt install -y wget unzip || { echo "安裝依賴包失敗。"; exit 1; }
+apt install -y wget unzip at || { echo "安裝依賴包失敗。"; exit 1; }
 
 # 下載並安裝 XRAY
 echo "下載 XRAY..."
-wget https://github.com/XTLS/Xray-core/releases/download/v$XRAY_VERSION/Xray-linux-64.zip -O /tmp/Xray-linux-64.zip \
-  || { echo "下載 XRAY 失敗。"; exit 1; }
+wget https://github.com/XTLS/Xray-core/releases/download/v$XRAY_VERSION/Xray-linux-64.zip -O /tmp/Xray-linux-64.zip || { echo "下載 XRAY 失敗。"; exit 1; }
 echo "解壓 XRAY..."
-unzip -o /tmp/Xray-linux-64.zip -d /usr/local/bin/ \
-  || { echo "解壓 XRAY 失敗。"; exit 1; }
+unzip -o /tmp/Xray-linux-64.zip -d /usr/local/bin/ || { echo "解壓 XRAY 失敗。"; exit 1; }
 chmod +x /usr/local/bin/xray
 
 # 創建代理用戶（如果未存在）
@@ -239,7 +244,7 @@ chmod 644 "$CONFIG_PATH"
 echo "創建 Systemd 服務文件：$SERVICE_PATH"
 cat <<EOF > "$SERVICE_PATH"
 [Unit]
-Description=XRAY $PROTOCOL Proxy Service
+Description=XRAY $PROTOCOL Proxy Service on port $PROXY_PORT
 After=network.target
 
 [Service]
@@ -251,36 +256,35 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
-# 重新加載 Systemd 配置
 echo "重新加載 Systemd 配置..."
 systemctl daemon-reload
 
-# 停止現有的 XRAY 服務（如果存在）
 echo "停止現有的 XRAY 服務（如果存在）..."
-systemctl stop xray.service 2>/dev/null
+systemctl stop ${SERVICE_NAME}.service 2>/dev/null
 
-# 啟動並啟用 XRAY 服務
 echo "啟動並啟用 XRAY 服務..."
-systemctl start xray
-systemctl enable xray
+systemctl start ${SERVICE_NAME}.service
+systemctl enable ${SERVICE_NAME}.service
 
-# 檢查 XRAY 服務狀態
 echo "檢查 XRAY 服務狀態..."
-if systemctl is-active --quiet xray; then
+if systemctl is-active --quiet ${SERVICE_NAME}.service; then
   echo "XRAY 服務已成功啟動並正在運行。"
 else
   echo "XRAY 服務啟動失敗，請檢查配置文件或日誌。"
   exit 1
 fi
 
-# 提供代理連接資訊
-SERVER_IP=$(hostname -I | awk '{print $1}')
+# 安排在到期時停止並清理服務
+apt install -y at || { echo "安裝 at 失敗。"; exit 1; }
+STOP_CMD="systemctl stop ${SERVICE_NAME}.service && systemctl disable ${SERVICE_NAME}.service && rm /etc/systemd/system/${SERVICE_NAME}.service && rm $CONFIG_PATH && systemctl daemon-reload"
+echo "$STOP_CMD" | at "$EXPIRATION_DATE"
+echo "服務將在 $EXPIRATION_DATE 自動停止並清理。"
 
 echo "--------------------------------"
 echo "XRAY $PROTOCOL 代理服務器配置完成！"
 echo "請使用以下資訊配置您的客戶端："
 echo "--------------------------------"
-echo "代理地址: $SERVER_IP:$PROXY_PORT"
+echo "代理地址: $(hostname -I | awk '{print $1}'):$PROXY_PORT"
 if [ "$PROTOCOL" = "socks" ] || [ "$PROTOCOL" = "http" ]; then
   echo "用戶名: $PROXY_USERNAME"
   echo "密碼: $PROXY_PASSWORD"
@@ -293,14 +297,15 @@ if [ "$PROTOCOL" = "vless" ]; then
   echo "VLESS UUID: d290f1ee-6c54-4b01-90e6-d701748f0851"
   echo "協議: VLESS+TCP"
 fi
+echo "服務到期日: $EXPIRATION_DATE"
 echo "--------------------------------"
 
 echo "正在測試代理連接..."
 sleep 5
 if [ "$PROTOCOL" = "socks" ]; then
-  TEST_IP=$(curl -s --socks5 $PROXY_USERNAME:$PROXY_PASSWORD@$SERVER_IP:$PROXY_PORT https://api.ipify.org)
+  TEST_IP=$(curl -s --socks5 $PROXY_USERNAME:$PROXY_PASSWORD@$(hostname -I | awk '{print $1}'):$PROXY_PORT https://api.ipify.org)
 elif [ "$PROTOCOL" = "http" ]; then
-  TEST_IP=$(curl -s --proxy http://$PROXY_USERNAME:$PROXY_PASSWORD@$SERVER_IP:$PROXY_PORT https://api.ipify.org)
+  TEST_IP=$(curl -s --proxy http://$PROXY_USERNAME:$PROXY_PASSWORD@$(hostname -I | awk '{print $1}'):$PROXY_PORT https://api.ipify.org)
 else
   TEST_IP="N/A (請使用支持該協議的客戶端進行測試)"
 fi
