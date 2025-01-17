@@ -16,10 +16,9 @@ fi
 echo "設置時區為 Asia/Taipei..."
 timedatectl set-timezone Asia/Taipei
 if [ $? -eq 0 ]; then
-  echo "時區已設定為 $(timedatectl show -p Timezone --value)"
+  echo "當前時區：$(timedatectl show -p Timezone --value)"
 else
   echo "設置時區失敗。請手動確認系統時區。"
-  exit 1
 fi
 
 # 定義預設值
@@ -84,10 +83,9 @@ CONFIG_PATH="/etc/xray/config_${PROXY_PORT}_${TIMESTAMP}.json"
 SERVICE_NAME="xray_${PROXY_PORT}"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 
-# 更新套件列表和安裝必要依賴包（僅安裝未安裝的包）
+# 更新套件列表和安裝必要依賴包
 echo "更新套件列表..."
 apt update -y || { echo "套件列表更新失敗。"; exit 1; }
-
 echo "安裝必要的依賴包..."
 DEPENDENCIES=(wget unzip at)
 for pkg in "${DEPENDENCIES[@]}"; do
@@ -157,7 +155,6 @@ case "$PROTOCOL" in
 }
 EOF
     ;;
-  
   ss)
     cat <<EOF >"$CONFIG_PATH"
 {
@@ -186,7 +183,6 @@ EOF
 }
 EOF
     ;;
-  
   vless)
     cat <<EOF >"$CONFIG_PATH"
 {
@@ -223,7 +219,6 @@ EOF
 EOF
     echo "使用預設 VLESS UUID: d290f1ee-6c54-4b01-90e6-d701748f0851"
     ;;
-  
   http)
     cat <<EOF >"$CONFIG_PATH"
 {
@@ -255,7 +250,6 @@ EOF
 }
 EOF
     ;;
-  
   *)
     echo "不支持的協議類型：$PROTOCOL"
     exit 1
@@ -302,12 +296,11 @@ else
   exit 1
 fi
 
-# 安排在到期時停止並清理服務
 echo "確保 atd 服務正在運行..."
 systemctl enable --now atd
 
 # 格式化到期日期以確保 at 能正確解析
-FORMATTED_EXPIRATION_DATE=$(date -d "$EXPIRATION_DATE" "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
+FORMATTED_EXPIRATION_DATE=$(date -d "$EXPIRATION_DATE" "+%Y-%m-%d %H:%M" 2>/dev/null)
 if [ $? -ne 0 ]; then
   echo "到期日期格式錯誤，請使用 'YYYY-MM-DD HH:MM:SS' 格式。"
   exit 1
@@ -322,7 +315,6 @@ else
   exit 1
 fi
 
-# 提供代理連接資訊
 SERVER_IP=$(hostname -I | awk '{print $1}')
 
 echo "--------------------------------"
