@@ -109,16 +109,12 @@ case "$MODE" in
     systemctl restart xray_${PROXY_PORT}.service
     ;;
 
-  --renew)
-    # 只續約：取消現有 at 任務並安排新的停止時間
+    --renew)
+    # 只續約：取消現有 at 任務並安排新的停止時間，同時確保服務啟動
     echo "續約操作 - 延長到期日..."
-    # 找到現有服務名
+    # 定義服務名稱
     SERVICE_NAME="xray_${PROXY_PORT}"
-    CONFIG_FILE=$(ls /etc/xray/config_${PROXY_PORT}_*.json 2>/dev/null | head -n1)
-    if [ -z "$CONFIG_FILE" ]; then
-      echo "未找到端口 $PROXY_PORT 的配置文件，無法續約。"
-      exit 1
-    fi
+
     # 查找並取消現有的 at 任務
     atq | awk '{print $1}' | while read job; do
       if at -c $job 2>/dev/null | grep -q "systemctl stop ${SERVICE_NAME}.service"; then
@@ -126,13 +122,35 @@ case "$MODE" in
         echo "取消現有的 at 任務: $job"
       fi
     done
+
     # 安排新的停止任務
     systemctl enable --now atd
     AT_TIME=$(date -d "$EXPIRATION_DATE" +"%Y%m%d%H%M" 2>/dev/null)
+    if [ $? -ne 0 ]; then
+      echo "到期日期格式錯誤，請使用 'YYYY-MM-DD HH:MM:SS' 格式。"
+      exit 1
+    fi
+    # 假設配置文件與服務單元已存在於相應位置
+    CONFIG_FILE=$(ls /etc/xray/config_${PROXY_PORT}_*.json 2>/dev/null | head -n1)
+    if [ -z "$CONFIG_FILE" ]; then
+      echo "未找到端口 $PROXY_PORT 的配置文件，無法續約。"
+      exit 1
+    fi
     STOP_CMD="systemctl stop ${SERVICE_NAME}.service && systemctl disable ${SERVICE_NAME}.service && rm /etc/systemd/system/${SERVICE_NAME}.service && rm $CONFIG_FILE && systemctl daemon-reload"
     echo "$STOP_CMD" | at -t "$AT_TIME"
-    echo "服務將在 $EXPIRATION_DATE 自動停止並清理。"
+    if [ $? -eq 0 ]; then
+      echo "服務將在 $EXPIRATION_DATE 自動停止並清理。"
+    else
+      echo "排程自動停止服務失敗。請檢查 atd 服務是否運行正常。"
+      exit 1
+    fi
+
+    # 確保服務啟動並啟用（續約後可能已停止）
+    echo "啟動並啟用服務 ${SERVICE_NAME}..."
+    systemctl start ${SERVICE_NAME}.service
+    systemctl enable ${SERVICE_NAME}.service
     ;;
+
 
   --renew-update)
     # 續約+修改密碼：結合 --update-credentials 和 --renew 操作
