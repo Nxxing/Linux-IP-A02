@@ -12,10 +12,15 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# 設置時區為 Asia/Taipei 並使用 24 制
+# 設置時區為 Asia/Taipei 並使用 24 小時制
 echo "設置時區為 Asia/Taipei..."
 timedatectl set-timezone Asia/Taipei
-echo "當前時區：$(timedatectl show -p Timezone --value)"
+if [ $? -eq 0 ]; then
+  echo "時區已設定為 $(timedatectl show -p Timezone --value)"
+else
+  echo "設置時區失敗。請手動確認系統時區。"
+  exit 1
+fi
 
 # 定義預設值
 DEFAULT_USERNAME="proxyuser"
@@ -79,11 +84,19 @@ CONFIG_PATH="/etc/xray/config_${PROXY_PORT}_${TIMESTAMP}.json"
 SERVICE_NAME="xray_${PROXY_PORT}"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 
-# 更新套件列表和安裝必要依賴包
+# 更新套件列表和安裝必要依賴包（僅安裝未安裝的包）
 echo "更新套件列表..."
 apt update -y || { echo "套件列表更新失敗。"; exit 1; }
+
 echo "安裝必要的依賴包..."
-apt install -y wget unzip at || { echo "安裝依賴包失敗。"; exit 1; }
+DEPENDENCIES=(wget unzip at)
+for pkg in "${DEPENDENCIES[@]}"; do
+  if ! dpkg -l | grep -qw "$pkg"; then
+    apt install -y "$pkg" || { echo "安裝 $pkg 失敗。"; exit 1; }
+  else
+    echo "$pkg 已安裝，跳過。"
+  fi
+done
 
 # 下載並安裝 XRAY 如果尚未安裝
 if [ ! -x /usr/local/bin/xray ]; then
@@ -110,8 +123,9 @@ mkdir -p /etc/xray || { echo "無法創建 /etc/xray 目錄。"; exit 1; }
 
 # 根據協議生成配置文件
 echo "生成配置文件：$CONFIG_PATH"
-if [ "$PROTOCOL" = "socks" ]; then
-  cat <<EOF >"$CONFIG_PATH"
+case "$PROTOCOL" in
+  socks)
+    cat <<EOF >"$CONFIG_PATH"
 {
   "inbounds": [
     {
@@ -142,9 +156,10 @@ if [ "$PROTOCOL" = "socks" ]; then
   }
 }
 EOF
-
-elif [ "$PROTOCOL" = "ss" ]; then
-  cat <<EOF >"$CONFIG_PATH"
+    ;;
+  
+  ss)
+    cat <<EOF >"$CONFIG_PATH"
 {
   "inbounds": [
     {
@@ -170,9 +185,10 @@ elif [ "$PROTOCOL" = "ss" ]; then
   }
 }
 EOF
-
-elif [ "$PROTOCOL" = "vless" ]; then
-  cat <<EOF >"$CONFIG_PATH"
+    ;;
+  
+  vless)
+    cat <<EOF >"$CONFIG_PATH"
 {
   "inbounds": [
     {
@@ -205,10 +221,11 @@ elif [ "$PROTOCOL" = "vless" ]; then
   }
 }
 EOF
-  echo "使用預設 VLESS UUID: d290f1ee-6c54-4b01-90e6-d701748f0851"
-
-elif [ "$PROTOCOL" = "http" ]; then
-  cat <<EOF >"$CONFIG_PATH"
+    echo "使用預設 VLESS UUID: d290f1ee-6c54-4b01-90e6-d701748f0851"
+    ;;
+  
+  http)
+    cat <<EOF >"$CONFIG_PATH"
 {
   "inbounds": [
     {
@@ -237,11 +254,13 @@ elif [ "$PROTOCOL" = "http" ]; then
   }
 }
 EOF
-
-else
-  echo "不支持的協議類型：$PROTOCOL"
-  exit 1
-fi
+    ;;
+  
+  *)
+    echo "不支持的協議類型：$PROTOCOL"
+    exit 1
+    ;;
+esac
 
 echo "配置文件已生成：$CONFIG_PATH"
 
@@ -284,16 +303,33 @@ else
 fi
 
 # 安排在到期時停止並清理服務
-apt install -y at || { echo "安裝 at 失敗。"; exit 1; }
+echo "確保 atd 服務正在運行..."
+systemctl enable --now atd
+
+# 格式化到期日期以確保 at 能正確解析
+FORMATTED_EXPIRATION_DATE=$(date -d "$EXPIRATION_DATE" "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
+if [ $? -ne 0 ]; then
+  echo "到期日期格式錯誤，請使用 'YYYY-MM-DD HH:MM:SS' 格式。"
+  exit 1
+fi
+
 STOP_CMD="systemctl stop ${SERVICE_NAME}.service && systemctl disable ${SERVICE_NAME}.service && rm /etc/systemd/system/${SERVICE_NAME}.service && rm $CONFIG_PATH && systemctl daemon-reload"
-echo "$STOP_CMD" | at "$EXPIRATION_DATE"
-echo "服務將在 $EXPIRATION_DATE 自動停止並清理。"
+echo "$STOP_CMD" | at "$FORMATTED_EXPIRATION_DATE"
+if [ $? -eq 0 ]; then
+  echo "服務將在 $EXPIRATION_DATE 自動停止並清理。"
+else
+  echo "排程自動停止服務失敗。請檢查 atd 服務是否運行正常。"
+  exit 1
+fi
+
+# 提供代理連接資訊
+SERVER_IP=$(hostname -I | awk '{print $1}')
 
 echo "--------------------------------"
 echo "XRAY $PROTOCOL 代理服務器配置完成！"
 echo "請使用以下資訊配置您的客戶端："
 echo "--------------------------------"
-echo "代理地址: $(hostname -I | awk '{print $1}'):$PROXY_PORT"
+echo "代理地址: $SERVER_IP:$PROXY_PORT"
 if [ "$PROTOCOL" = "socks" ] || [ "$PROTOCOL" = "http" ]; then
   echo "用戶名: $PROXY_USERNAME"
   echo "密碼: $PROXY_PASSWORD"
@@ -308,21 +344,5 @@ if [ "$PROTOCOL" = "vless" ]; then
 fi
 echo "服務到期日: $EXPIRATION_DATE"
 echo "--------------------------------"
-
-echo "正在測試代理連接..."
-sleep 5
-if [ "$PROTOCOL" = "socks" ]; then
-  TEST_IP=$(curl -s --socks5 $PROXY_USERNAME:$PROXY_PASSWORD@$(hostname -I | awk '{print $1}'):$PROXY_PORT https://api.ipify.org)
-elif [ "$PROTOCOL" = "http" ]; then
-  TEST_IP=$(curl -s --proxy http://$PROXY_USERNAME:$PROXY_PASSWORD@$(hostname -I | awk '{print $1}'):$PROXY_PORT https://api.ipify.org)
-else
-  TEST_IP="N/A (請使用支持該協議的客戶端進行測試)"
-fi
-
-if [ "$TEST_IP" != "N/A" ] && [ -n "$TEST_IP" ]; then
-  echo "代理連接成功。代理外網 IP 為：$TEST_IP"
-else
-  echo "代理連接測試需使用支持該協議的客戶端進行確認。"
-fi
 
 echo "配置完成！"
