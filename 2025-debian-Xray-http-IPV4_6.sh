@@ -299,15 +299,15 @@ fi
 echo "確保 atd 服務正在運行..."
 systemctl enable --now atd
 
-# 格式化到期日期以確保 at 能正確解析
-FORMATTED_EXPIRATION_DATE=$(date -d "$EXPIRATION_DATE" "+%Y-%m-%d %H:%M" 2>/dev/null)
+# 格式化到期日期以符合 at -t 格式 (YYYYMMDDHHMM)
+AT_TIME=$(date -d "$EXPIRATION_DATE" +"%Y%m%d%H%M" 2>/dev/null)
 if [ $? -ne 0 ]; then
   echo "到期日期格式錯誤，請使用 'YYYY-MM-DD HH:MM:SS' 格式。"
   exit 1
 fi
 
 STOP_CMD="systemctl stop ${SERVICE_NAME}.service && systemctl disable ${SERVICE_NAME}.service && rm /etc/systemd/system/${SERVICE_NAME}.service && rm $CONFIG_PATH && systemctl daemon-reload"
-echo "$STOP_CMD" | at "$FORMATTED_EXPIRATION_DATE"
+echo "$STOP_CMD" | at -t "$AT_TIME"
 if [ $? -eq 0 ]; then
   echo "服務將在 $EXPIRATION_DATE 自動停止並清理。"
 else
