@@ -12,14 +12,10 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# 設置系統時區為台北
+# 設置時區為 Asia/Taipei 並使用 24 制
 echo "設置時區為 Asia/Taipei..."
 timedatectl set-timezone Asia/Taipei
-if [ $? -eq 0 ]; then
-  echo "時區已設定為 $(timedatectl show -p Timezone --value)"
-else
-  echo "設置時區失敗。請手動確認系統時區。"
-fi
+echo "當前時區：$(timedatectl show -p Timezone --value)"
 
 # 定義預設值
 DEFAULT_USERNAME="proxyuser"
@@ -77,7 +73,7 @@ else
   echo "端口 $PROXY_PORT 未被佔用。"
 fi
 
-# 定義時間戳和配置路徑
+# 定義時間戳、配置路徑和服務名稱
 TIMESTAMP=$(date +%Y%m%d%H%M%S)
 CONFIG_PATH="/etc/xray/config_${PROXY_PORT}_${TIMESTAMP}.json"
 SERVICE_NAME="xray_${PROXY_PORT}"
@@ -89,12 +85,16 @@ apt update -y || { echo "套件列表更新失敗。"; exit 1; }
 echo "安裝必要的依賴包..."
 apt install -y wget unzip at || { echo "安裝依賴包失敗。"; exit 1; }
 
-# 下載並安裝 XRAY
-echo "下載 XRAY..."
-wget https://github.com/XTLS/Xray-core/releases/download/v$XRAY_VERSION/Xray-linux-64.zip -O /tmp/Xray-linux-64.zip || { echo "下載 XRAY 失敗。"; exit 1; }
-echo "解壓 XRAY..."
-unzip -o /tmp/Xray-linux-64.zip -d /usr/local/bin/ || { echo "解壓 XRAY 失敗。"; exit 1; }
-chmod +x /usr/local/bin/xray
+# 下載並安裝 XRAY 如果尚未安裝
+if [ ! -x /usr/local/bin/xray ]; then
+  echo "下載 XRAY..."
+  wget https://github.com/XTLS/Xray-core/releases/download/v$XRAY_VERSION/Xray-linux-64.zip -O /tmp/Xray-linux-64.zip || { echo "下載 XRAY 失敗。"; exit 1; }
+  echo "解壓 XRAY..."
+  unzip -o /tmp/Xray-linux-64.zip -d /usr/local/bin/ || { echo "解壓 XRAY 失敗。"; exit 1; }
+  chmod +x /usr/local/bin/xray
+else
+  echo "XRAY 已安裝，跳過下載與安裝。"
+fi
 
 # 創建代理用戶（如果未存在）
 if id "$PROXY_USERNAME" &>/dev/null; then
