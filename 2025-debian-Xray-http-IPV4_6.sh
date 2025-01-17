@@ -12,6 +12,15 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# 設置系統時區為台北
+echo "設置時區為 Asia/Taipei..."
+timedatectl set-timezone Asia/Taipei
+if [ $? -eq 0 ]; then
+  echo "時區已設定為 $(timedatectl show -p Timezone --value)"
+else
+  echo "設置時區失敗。請手動確認系統時區。"
+fi
+
 # 定義預設值
 DEFAULT_USERNAME="proxyuser"
 DEFAULT_PASSWORD="X3KVTD6tsFkTtuf5"
